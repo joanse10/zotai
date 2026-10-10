@@ -1,5 +1,8 @@
 # Zotai
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+
 **Zotai** (Zotero + AI) — aplicație desktop pentru Windows care automatizează catalogarea documentelor PDF/DOCX: extrage metadate bibliografice cu AI și baze online, le scrie direct în fișier (XMP Dublin Core) și le trimite în Zotero.
 
 ## Funcționalități
@@ -142,4 +145,8 @@ installer/— Script Inno Setup pentru construirea instalatorului Windows
 - **Zotero** cu Connector activ (portul 23119) pentru export; altfel sarcinile așteaptă în coadă.
 - **Agent AI CLI** (`agy` recomandat) sau cheie API — se configurează în Setări → Motor AI.
 - **Tesseract OCR** pentru scanuri — `bin/tesseract` în distribuție sau instalare de sistem; limbile se descarcă din Setări → Limbi OCR.
+
+## Licență
+
+Acest proiect este licențiat sub termenii licenței **Apache License 2.0** (Apache-2.0) — consultați fișierul [LICENSE](LICENSE) pentru textul complet al licenței.
 
