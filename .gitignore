@@ -1,0 +1,76 @@
+# ==========================================
+# Bytecode Python & Medii Virtuale
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# ==========================================
+# Fișiere de compilare & Distribuție (PyInstaller & Inno Setup)
+# ==========================================
+build/
+dist/
+dist_installer/
+*.manifest
+*.spec.bak
+
+# ==========================================
+# Baze de date & Jurnale de execuție
+# ==========================================
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+logs/
+*.log
+
+# ==========================================
+# Date descărcate, Inbox & Pachete Tesseract OCR
+# ==========================================
+downloads/
+inbox/
+bin/tessdata/
+
+# ==========================================
+# Imagini și capturi de ecran temporare din rădăcină
+# (resursele oficiale sunt păstrate în assets/)
+# ==========================================
+/*.png
+/*.jpg
+/*.jpeg
+/*.webp
+/*.bmp
+/icon.ico
+
+# ==========================================
+# Documente interne de specificații și ciorne
+# (doar README.md rămâne în repository ca documentație oficială)
+# ==========================================
+/*.md
+!/README.md
+
+# ==========================================
+# IDE & Editori de cod
+# ==========================================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+
+# ==========================================
+# Sistem de operare (Windows / macOS)
+# ==========================================
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+desktop.ini
+.DS_Store
