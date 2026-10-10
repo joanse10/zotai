@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zotai — Catalogare Bibliografică Automată cu AI pentru Zotero</title>
+  <meta name="description" content="Zotai automatizează catalogarea documentelor PDF și DOCX: extrage metadate cu AI, OCR și baze online, scrie XMP Dublin Core și sincronizează direct în Zotero.">
+  <meta name="keywords" content="Zotai, Zotero, AI, metadata, PDF, OCR, Tesseract, Dublin Core, XMP, bibliografie, CrossRef, DOI, ISBN">
+  <link rel="icon" type="image/png" href="assets/icon_32.png">
+  <link rel="apple-touch-icon" href="assets/icon_128.png">
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Ambient Grid Background -->
+  <div class="ambient-grid"></div>
+
+  <!-- Header / Navigation -->
+  <header class="navbar">
+    <div class="container nav-container">
+      <a href="#" class="brand">
+        <img src="assets/icon_64.png" alt="Zotai Logo" class="brand-icon">
+        <span>Zotai</span>
+        <span class="brand-badge">v1.0.0</span>
+      </a>
+
+      <ul class="nav-links">
+        <li><a href="#features" class="nav-link" data-i18n="navFeatures">Funcționalități</a></li>
+        <li><a href="#pipeline" class="nav-link" data-i18n="navPipeline">Arhitectură</a></li>
+        <li><a href="#downloads" class="nav-link" data-i18n="navDownloads">Descărcare</a></li>
+        <li><a href="#terminal" class="nav-link" data-i18n="navDocs">Ghid CLI</a></li>
+        <li><a href="#faq" class="nav-link" data-i18n="navFaq">FAQ</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <!-- Language Switcher -->
+        <div class="lang-selector">
+          <button id="langBtn" class="lang-btn" aria-label="Alege limba">
+            <span>🌐</span>
+            <span id="currentLangLabel">Română</span>
+            <span>▾</span>
+          </button>
+          <div id="langDropdown" class="lang-dropdown">
+            <button class="lang-opt selected" data-lang="ro">🇷🇴 Română</button>
+            <button class="lang-opt" data-lang="ru">🇷🇺 Русский</button>
+            <button class="lang-opt" data-lang="en">🇬🇧 English</button>
+          </div>
+        </div>
+
+        <!-- GitHub Button -->
+        <a href="https://github.com/joanse10/zotai" target="_blank" rel="noopener noreferrer" class="btn-gh">
+          <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+          </svg>
+          <span>GitHub</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <main>
+    <section class="hero">
+      <div class="container">
+        <div class="pill-announcement">
+          <span class="pill-pulse"></span>
+          <span data-i18n="heroBadge">Versiunea 1.0.0 lansată • Open Source Apache 2.0</span>
+        </div>
+
+        <h1 class="hero-title">
+          <span class="gradient-text" data-i18n="heroTitle">Catalogare bibliografică automată cu AI pentru Zotero</span>
+        </h1>
+
+        <p class="hero-subtitle" data-i18n="heroSubtitle">
+          Transformă orice fișier PDF sau DOCX într-o fișă bibliografică completă. Extrage text nativ sau scanează prin OCR, preia metadate din baze online și îmbogățește automat câmpurile lipsă cu AI.
+        </p>
+
+        <div class="hero-cta">
+          <div class="cta-group">
+            <a href="https://github.com/joanse10/zotai/releases/latest/download/ZotaiSetup-1.0.0.exe" class="btn-primary" id="mainDownloadBtn">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              <span data-i18n="btnDownloadWin">Descarcă pentru Windows</span>
+            </a>
+
+            <a href="#downloads" class="btn-secondary">
+              <span data-i18n="btnPortable">Versiune Portabilă (.zip)</span>
+            </a>
+          </div>
+
+          <div class="meta-pill">
+            <span data-i18n="sysReq">Windows 10 / 11 (64-bit) • ~48 MB • Inno Setup</span>
+          </div>
+        </div>
+
+        <!-- UI Preview Window (RustDesk Style Mockup) -->
+        <div class="preview-wrapper">
+          <div class="preview-glow"></div>
+          <div class="window-mockup">
+            <div class="window-header">
+              <div class="window-controls">
+                <span class="control-dot dot-red"></span>
+                <span class="control-dot dot-yellow"></span>
+                <span class="control-dot dot-green"></span>
+              </div>
+              <div class="window-title">
+                <span>📁</span>
+                <span data-i18n="mockTitle">Zotai v1.0.0 - Catalogare Bibliografică</span>
+              </div>
+              <div class="window-badge" data-i18n="mockBadge">Zotero Conectat (23119)</div>
+            </div>
+
+            <div class="window-body">
+              <div class="window-main">
+                <div class="mock-toolbar">
+                  <div class="mock-search">
+                    <span>🔍</span>
+                    <span data-i18n="mockSearchPlaceholder">Căutare după DOI, ISBN, titlu sau URL...</span>
+                  </div>
+                  <div class="mock-btn" data-i18n="mockAddBtn">+ Adaugă Fișiere</div>
+                </div>
+
+                <table class="mock-table">
+                  <thead>
+                    <tr>
+                      <th data-i18n="mockColFile">Fișier / Titlu</th>
+                      <th data-i18n="mockColStatus">Stare</th>
+                      <th data-i18n="mockColType">Tip</th>
+                      <th data-i18n="mockColYear">An</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="selected">
+                      <td>
+                        <strong>Deep_Learning_Academic_Libraries.pdf</strong><br>
+                        <small style="color:#64748b">10.1016/j.acalib.2023.102758</small>
+                      </td>
+                      <td><span class="tag tag-zotero" data-i18n="mockStatusDone">✓ Sincronizat</span></td>
+                      <td>Articol</td>
+                      <td>2024</td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <strong>Monografia_Istoria_Cartii_Moldova.pdf</strong><br>
+                        <small style="color:#64748b">ISBN 978-9975-128-45-1</small>
+                      </td>
+                      <td><span class="tag tag-success" data-i18n="mockStatusAi">✦ Completare AI</span></td>
+                      <td>Carte</td>
+                      <td>2023</td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <strong>Scan_Arhiva_Document_1988.pdf</strong><br>
+                        <small style="color:#64748b">Tesseract OCR (ron + rus)</small>
+                      </td>
+                      <td><span class="tag tag-process" data-i18n="mockStatusProcessing">⚙ Extragere OCR</span></td>
+                      <td>Manuscris</td>
+                      <td>—</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Inspector Sidebar Mock -->
+              <div class="window-sidebar">
+                <div class="sidebar-title" data-i18n="mockInspectorTitle">Inspector Metadate (XMP/Zotero)</div>
+                <div class="sidebar-field">
+                  <span class="field-label" data-i18n="mockLblTitle">Titlu Document</span>
+                  <div class="field-val">Deep Learning Applications in Modern Academic Libraries</div>
+                </div>
+                <div class="sidebar-field">
+                  <span class="field-label" data-i18n="mockLblAuthors">Autori</span>
+                  <div class="field-val">Popescu, Andrei; Chen, Wei</div>
+                </div>
+                <div class="sidebar-field">
+                  <span class="field-label" data-i18n="mockLblDoi">Identificator DOI</span>
+                  <div class="field-val" style="color:var(--accent-cyan)">10.1016/j.acalib.2023.102758</div>
+                </div>
+                <div class="sidebar-field">
+                  <span class="field-label" data-i18n="mockLblCzu">Clasificare CZU / LBC</span>
+                  <div class="field-val">025.4:004.89 (Completat de AI)</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Downloads Section (RustDesk Style) -->
+    <section class="section" id="downloads">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag" data-i18n="secDownloadTag">Instalare & Kit-uri</div>
+          <h2 class="section-title" data-i18n="secDownloadTitle">Alegeți pachetul potrivit</h2>
+          <p class="section-desc" data-i18n="secDownloadDesc">Descărcați fișierele de instalare oficiale verificate cu semnătură SHA-256.</p>
+        </div>
+
+        <div class="download-grid">
+          <!-- Windows Installer (Featured) -->
+          <div class="download-card featured">
+            <div class="featured-ribbon">Recomandat</div>
+            <div>
+              <div class="card-icon">🪟</div>
+              <h3 class="card-title" data-i18n="cardInstTitle">Instalator Windows</h3>
+              <p class="card-desc" data-i18n="cardInstDesc">Instalare completă asistată cu meniu contextual, comandă rapidă și asistent în limba română.</p>
+              
+              <div class="card-specs">
+                <div class="spec-row">
+                  <span>Fișier:</span>
+                  <span class="spec-val">ZotaiSetup-1.0.0.exe</span>
+                </div>
+                <div class="spec-row">
+                  <span>Mărime:</span>
+                  <span class="spec-val">~48 MB</span>
+                </div>
+                <div class="spec-row">
+                  <span>Platformă:</span>
+                  <span class="spec-val">Windows 10 / 11 (x64)</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <a href="https://github.com/joanse10/zotai/releases/latest/download/ZotaiSetup-1.0.0.exe" class="card-btn">
+                <span>⬇</span> <span data-i18n="btnDownload">Descarcă</span>
+              </a>
+              <div class="checksum-toggle">
+                <button class="checksum-btn" onclick="openChecksumModal('ZotaiSetup-1.0.0.exe', 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')" data-i18n="btnViewChecksum">Verifică Hash SHA-256</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Windows Portable -->
+          <div class="download-card">
+            <div>
+              <div class="card-icon">📦</div>
+              <h3 class="card-title" data-i18n="cardPortTitle">Portabil Windows</h3>
+              <p class="card-desc" data-i18n="cardPortDesc">Arhivă ZIP autonomă — dezarhivați și rulați fără privilegii de administrator.</p>
+              
+              <div class="card-specs">
+                <div class="spec-row">
+                  <span>Fișier:</span>
+                  <span class="spec-val">Zotai-1.0.0-win64.zip</span>
+                </div>
+                <div class="spec-row">
+                  <span>Mărime:</span>
+                  <span class="spec-val">~46 MB</span>
+                </div>
+                <div class="spec-row">
+                  <span>Platformă:</span>
+                  <span class="spec-val">Orice folder / USB</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <a href="https://github.com/joanse10/zotai/releases/latest/download/Zotai-1.0.0-win64.zip" class="card-btn">
+                <span>⬇</span> <span data-i18n="btnDownload">Descarcă</span>
+              </a>
+              <div class="checksum-toggle">
+                <button class="checksum-btn" onclick="openChecksumModal('Zotai-1.0.0-win64.zip', 'cf83ac130d1a8b3029f1883b0d193992f64fa57193d698a2e46244340223650f')" data-i18n="btnViewChecksum">Verifică Hash SHA-256</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Python Source Code -->
+          <div class="download-card">
+            <div>
+              <div class="card-icon">🐍</div>
+              <h3 class="card-title" data-i18n="cardSourceTitle">Cod Sursă Python</h3>
+              <p class="card-desc" data-i18n="cardSourceDesc">Pentru dezvoltatori și medii headless. Rulare prin pip și linie de comandă.</p>
+              
+              <div class="card-specs">
+                <div class="spec-row">
+                  <span>Cerință:</span>
+                  <span class="spec-val">Python 3.10 - 3.14</span>
+                </div>
+                <div class="spec-row">
+                  <span>Licență:</span>
+                  <span class="spec-val">Apache-2.0</span>
+                </div>
+                <div class="spec-row">
+                  <span>Depozit:</span>
+                  <span class="spec-val">joanse10/zotai</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <a href="https://github.com/joanse10/zotai/archive/refs/heads/main.zip" class="card-btn">
+                <span>⬇</span> <span data-i18n="btnDownload">Descarcă ZIP Sursă</span>
+              </a>
+              <div class="checksum-toggle">
+                <a href="https://github.com/joanse10/zotai" target="_blank" class="checksum-btn">Git Clone / GitHub</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Key Features Grid -->
+    <section class="section" id="features">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag" data-i18n="secFeatTag">Avantaje Cheie</div>
+          <h2 class="section-title" data-i18n="secFeatTitle">De ce Zotai?</h2>
+        </div>
+
+        <div class="features-grid">
+          <div class="feature-card">
+            <div class="feat-icon-box">⚡</div>
+            <h3 class="feat-title" data-i18n="feat1Title">Extragere Mixtă Text & OCR</h3>
+            <p class="feat-desc" data-i18n="feat1Desc">Citește textul nativ în milisecunde cu PyMuPDF sau trece pe Tesseract OCR automat când documentul este scanat.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feat-icon-box">🤖</div>
+            <h3 class="feat-title" data-i18n="feat2Title">Metadate Hibride & AI CLI</h3>
+            <p class="feat-desc" data-i18n="feat2Desc">Identifică DOI/ISBN din text pentru date exacte (CrossRef, OpenLibrary) și folosește AI CLI doar pentru câmpurile goale.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feat-icon-box">💾</div>
+            <h3 class="feat-title" data-i18n="feat3Title">Injectare Directă în Fișier</h3>
+            <p class="feat-desc" data-i18n="feat3Desc">Scrie metadatele direct în PDF (XMP Dublin Core/PRISM) și DOCX cu generare automată de backup *.xmpbak.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feat-icon-box">🔌</div>
+            <h3 class="feat-title" data-i18n="feat4Title">Coadă Offline (Zero Data Loss)</h3>
+            <p class="feat-desc" data-i18n="feat4Desc">Dacă Zotero este închis, sarcinile sunt păstrate în siguranță în SQLite și trimise automat la redeschidere.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feat-icon-box">🌐</div>
+            <h3 class="feat-title" data-i18n="feat5Title">100% Multilingv & Dinamic</h3>
+            <p class="feat-desc" data-i18n="feat5Desc">Interfață modulară cu fișiere externe JSON (Română, Rusă, Engleză) — poți adăuga limbi noi fără să modifici codul.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feat-icon-box">🛡️</div>
+            <h3 class="feat-title" data-i18n="feat6Title">Complet Open-Source & Privat</h3>
+            <p class="feat-desc" data-i18n="feat6Desc">Toate datele rămân pe calculatorul tău. Fără telemetrie ascunsă, licențiat liber sub Apache 2.0.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Terminal & Developer Quickstart -->
+    <section class="section" id="terminal">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">Ghid Dezvoltator</div>
+          <h2 class="section-title">Comenzi Utile & CLI</h2>
+          <p class="section-desc">Testați utilitarele Zotai direct din terminal.</p>
+        </div>
+
+        <div class="code-container">
+          <div class="code-header">
+            <div class="code-tabs">
+              <button class="code-tab active" data-tab="run">Rulare Directă</button>
+              <button class="code-tab" data-tab="worker">Extractor CLI</button>
+              <button class="code-tab" data-tab="ocr">Limbi OCR</button>
+              <button class="code-tab" data-tab="build">Build PyInstaller</button>
+            </div>
+            <button id="copyCodeBtn" class="btn-copy">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span>Copiază</span>
+            </button>
+          </div>
+          <div class="code-content">
+            <pre><code id="codeDisplay"># Rulare directă din surse
+pip install -r requirements.txt
+python main.py</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section class="section" id="faq">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">Întrebări & Răspunsuri</div>
+          <h2 class="section-title" data-i18n="faqTitle">Întrebări Frecvente</h2>
+        </div>
+
+        <div class="faq-grid">
+          <div class="faq-item">
+            <button class="faq-question">
+              <span data-i18n="faq1Q">Zotai funcționează dacă Zotero este oprit?</span>
+              <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-answer" data-i18n="faq1A">
+              Da. Zotai procesează fișierele, injectează metadatele XMP și le salvează în baza de date locală SQLite. Când deschideți Zotero, articolele se sincronizează automat pe portul 23119.
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question">
+              <span data-i18n="faq2Q">Ce motoare AI sunt compatibile?</span>
+              <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-answer" data-i18n="faq2A">
+              Zotai suportă orice asistent CLI configurat: Antigravity agy, Claude Code, Ollama (local) sau comenzi personalizate cu parametri JSON.
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question">
+              <span data-i18n="faq3Q">Unde sunt stocate datele aplicației?</span>
+              <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-answer" data-i18n="faq3A">
+              Toate setările, baza de date zotai.db și jurnalele se păstrează în %LOCALAPPDATA%\Zotai și nu se pierd la actualizări sau reinstalări.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-col">
+          <div class="brand">
+            <img src="assets/icon_32.png" alt="Zotai" class="brand-icon">
+            <span>Zotai</span>
+          </div>
+          <p class="footer-brand-desc">
+            Aplicație desktop open-source pentru Windows care automatizează catalogarea documentelor academice cu inteligență artificială și Zotero.
+          </p>
+        </div>
+
+        <div class="footer-links-col">
+          <div class="footer-nav">
+            <div class="footer-nav-title">Proiect</div>
+            <a href="https://github.com/joanse10/zotai" target="_blank">Depozit GitHub</a>
+            <a href="https://github.com/joanse10/zotai/releases" target="_blank">Toate Versiunile</a>
+            <a href="https://github.com/joanse10/zotai/blob/main/LICENSE" target="_blank">Licență Apache 2.0</a>
+          </div>
+
+          <div class="footer-nav">
+            <div class="footer-nav-title">Comunitate</div>
+            <a href="https://github.com/joanse10/zotai/issues" target="_blank">Raportare Probleme</a>
+            <a href="https://github.com/joanse10/zotai/pulls" target="_blank">Contribuie</a>
+            <a href="https://www.zotero.org" target="_blank">Ecosistem Zotero</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <div>© 2026 joanse10. Lansat sub licența Apache-2.0.</div>
+        <div>Construit pentru cercetători, bibliotecari și comunitatea open-source.</div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast">Mesaj copiat!</div>
+
+  <!-- Checksum Modal -->
+  <div id="checksumModal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="modalFilename" style="color:var(--text-main); font-size:1.1rem;">Fișier</h3>
+        <button id="modalClose" class="modal-close">✕</button>
+      </div>
+      <p style="color:var(--text-muted); font-size:0.86rem;">Semnătură criptografică SHA-256 pentru verificare integritate:</p>
+      <div id="modalHash" class="modal-hash">e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</div>
+      <div style="margin-top:16px; display:flex; justify-content:flex-end;">
+        <button id="copyHashBtn" class="btn-copy" style="padding:8px 16px;">Copiază Hash</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
