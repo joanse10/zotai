@@ -47,6 +47,41 @@ class ZoteroConnector:
         return False
 
     # ------------------------------------------------------------------
+    # Deduplicare prin Local API (Zotero 7: Setări -> Avansat ->
+    # „Permite altor aplicații de pe acest computer să comunice cu Zotero”)
+    # ------------------------------------------------------------------
+    def find_existing(self, doi: str = "", isbn: str = "", title: str = "") -> Optional[str]:
+        """
+        Caută în biblioteca locală un element cu același DOI / ISBN / titlu.
+        Returnează cheia elementului sau None (inclusiv când Local API este dezactivat).
+        """
+        queries = [q for q in (doi, isbn) if q]
+        if title and len(title) > 12:
+            queries.append(title[:120])
+        for q in queries:
+            try:
+                r = httpx.get(
+                    f"{self.base_url}/api/users/0/items",
+                    params={"q": q, "qmode": "everything", "limit": 5,
+                            "format": "json", "itemType": "-attachment || note"},
+                    timeout=self.timeout,
+                )
+                if r.status_code != 200:
+                    return None  # Local API dezactivat -> nu putem verifica
+                for it in r.json():
+                    d = it.get("data", {})
+                    if doi and (d.get("DOI") or "").lower() == doi.lower():
+                        return it.get("key")
+                    if isbn and isbn in (d.get("ISBN") or "").replace("-", ""):
+                        return it.get("key")
+                    if title and q == title[:120] and \
+                            (d.get("title") or "").strip().lower() == title.strip().lower():
+                        return it.get("key")
+            except Exception:
+                return None
+        return None
+
+    # ------------------------------------------------------------------
     # Trimiterea documentelor
     # ------------------------------------------------------------------
     def save_items(self, items: List[dict], session_id: Optional[str] = None,
@@ -182,10 +217,9 @@ class ZoteroConnector:
         item.setdefault("id", f"zotai-{uuid.uuid4().hex[:12]}")
         item.setdefault("tags", [])
         item.setdefault("collections", [])
-        item.setdefault("url", file_url)
         item["attachments"] = [{
             "id": attachment_id,
-            "title": os.path.basename(pdf_path),
+            "title": "Full Text PDF" if pdf_path.lower().endswith(".pdf") else os.path.basename(pdf_path),
             "url": file_url,
             "mimeType": self._mime_for(pdf_path),
             "parentItem": item["id"],
@@ -215,6 +249,13 @@ class ZoteroConnector:
         has_meta = bool(item and (item.get("title") or item.get("creators")))
         has_file = os.path.isfile(task.file_path)
         errors = []
+
+        # 0. Deduplicare: același DOI/ISBN/titlu există deja în bibliotecă
+        if item and not getattr(task, "force_resend", False):
+            key = self.find_existing(item.get("DOI", ""), item.get("ISBN", ""),
+                                     item.get("title", ""))
+            if key:
+                return True, f"Există deja în Zotero (cheie {key}) — nu s-a dublat"
 
         # 1. Fișă de metadate + atașament PDF (calea principală)
         if has_meta and has_file:

@@ -48,9 +48,11 @@ class BookMetadata:
     year: str = ""               # -> date
     city: str = ""               # -> place
     edition: str = ""
+    publication_title: str = ""  # revista / culegerea / cartea-părinte -> publicationTitle / proceedingsTitle / bookTitle
     series: str = ""
     series_number: str = ""
     volume: str = ""
+    issue: str = ""              # numărul revistei -> issue
     num_volumes: str = ""
     num_pages: str = ""
 

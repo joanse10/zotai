@@ -167,5 +167,8 @@
   "brave_key_placeholder": "BSA... (opțional)",
   "lbl_brave_hint": "Pentru DOI/ISBN neînregistrate, Zotai poate căuta PDF-ul pe web. Cheie gratuită (~2000 cereri/lună): brave.com/search/api",
   "btn_yes": "Da",
-  "btn_no": "Nu"
+  "btn_no": "Nu",
+  "lbl_publication_title": "Revistă / Culegere / Carte-părinte",
+  "lbl_issue": "Număr (issue)",
+  "lbl_local_api_hint": "Anti-duplicare: activați în Zotero → Setări → Avansat → „Permite altor aplicații de pe acest computer să comunice cu Zotero”. Zotai va verifica DOI/ISBN/titlul înainte de a trimite."
 }

@@ -2,7 +2,7 @@
 ; Build: pyinstaller zotai.spec -> dist/Zotai/, apoi iscc installer/zotai.iss
 
 #define MyAppName "Zotai"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "Zotai"
 #define MyAppExeName "Zotai.exe"
 

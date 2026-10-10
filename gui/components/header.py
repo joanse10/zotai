@@ -52,7 +52,7 @@ class HeaderComponent(ctk.CTkFrame):
 
         version_badge = ctk.CTkLabel(
             left_box,
-            text="v1.0",
+            text="v1.1",
             fg_color=Theme.PRIMARY_BG,
             text_color=Theme.PRIMARY_TEXT,
             corner_radius=4,

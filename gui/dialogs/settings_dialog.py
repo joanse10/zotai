@@ -250,6 +250,9 @@ class SettingsDialog(ctk.CTkToplevel):
         self.zotero_log_lbl = ctk.CTkLabel(z_inner, text="Port: 23119", font=Theme.font_caption(), text_color=Theme.STATUS_SUCCESS)
         self.zotero_log_lbl.pack(anchor="w", pady=(4, 0))
 
+        ctk.CTkLabel(z_inner, text=tr("lbl_local_api_hint"), font=Theme.font_caption(),
+                     text_color=Theme.TEXT_MUTED, wraplength=430, justify="left").pack(anchor="w", pady=(6, 0))
+
         # Toleranța la erori și coada offline
         ctk.CTkLabel(container, text=tr("lbl_tolerance_queue"), font=Theme.font_caption_bold(), text_color=Theme.PRIMARY).pack(anchor="w", pady=(10, 4))
 

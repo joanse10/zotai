@@ -81,8 +81,8 @@ def resolve_cli_binary(cmd: str) -> str:
 @dataclass
 class AIConfig:
     cli_template: str = "agy -p {prompt} --output-format text --effort low --dangerously-skip-permissions"
-    timeout: int = 60                # secunde pentru un apel AI
-    max_prompt_chars: int = 2500     # limita eșantionului de text (primele pagini conțin info bibliografică)
+    timeout: int = 90                # secunde pentru un apel AI
+    max_prompt_chars: int = 7000     # eșantion: început (titlu/CIP) + sfârșit (colofon/tiraj)
     enabled: bool = True             # False — se omite etapa AI
 
 
@@ -116,18 +116,47 @@ Schema JSON cerută (șir gol sau listă goală pentru câmpurile care nu pot fi
 
 Reguli:
 - item_type trebuie să fie una dintre: book, bookSection, journalArticle, conferencePaper, thesis, report, preprint, manuscript, document, magazineArticle, newspaperArticle, encyclopediaArticle, dictionaryEntry
-- authors și editors trebuie să fie tablouri de șiruri „Prenume Nume"
+- authors și editors trebuie să fie tablouri de șiruri „Prenume Nume"; NU include recenzenți, redactori tehnici, tehnoredactori, traducători sau colegiul de redacție
+- Pentru un ARTICOL dintr-o revistă/culegere: title = titlul articolului, publication_title = numele revistei/culegerii, issue/volume/num_pages = ale articolului
+- Pentru o CARTE: title = titlul cărții; num_pages = numărul total de pagini (din CIP: „… p.”)
+- Blocul CIP („Descrierea CIP a Camerei Naționale a Cărții” / „ББК” / „УДК”) este sursa cea mai fiabilă pentru ISBN, CZU, tiraj, editură, oraș
 - language trebuie să fie un cod ISO 639-1/3 (ron, eng, rus, fra, deu...)
 - confidence: de la 0.0 la 1.0 reprezentând încrederea ta
+- Nu inventa valori: dacă o informație lipsește din text, lasă câmpul gol
 - Nu afișa NIMIC în afară de JSON valid.""" % json.dumps(AI_OUTPUT_SCHEMA, ensure_ascii=False, indent=2)
 
 
-def build_prompt(text_sample: str, language_hint: str = "", cfg: Optional[AIConfig] = None) -> str:
-    """Construiește promptul pentru agentul AI din textul extras."""
+def _sample_text(text: str, limit: int) -> str:
+    """Început (pagini de titlu + CIP) și sfârșit (colofon, tiraj, ISBN) ale documentului."""
+    text = text or ""
+    if len(text) <= limit:
+        return text
+    head = int(limit * 0.72)
+    tail = limit - head
+    return text[:head] + "\n\n[... fragment omis ...]\n\n" + text[-tail:]
+
+
+def build_prompt(text_sample: str, language_hint: str = "", cfg: Optional[AIConfig] = None,
+                 known: Optional[Dict] = None) -> str:
+    """
+    Construiește promptul pentru agentul AI din textul extras.
+    `known` — câmpuri deja determinate cu certitudine (CrossRef/ISBN/metadate încorporate):
+    AI-ul le păstrează și completează doar restul (CZU, tiraj, rezumat, oraș…).
+    """
     cfg = cfg or AIConfig()
-    sample = text_sample[:cfg.max_prompt_chars]
+    sample = _sample_text(text_sample, cfg.max_prompt_chars)
     hint = f"\nSugestie privind limba documentului: {language_hint}" if language_hint else ""
-    return f"{SYSTEM_PROMPT}{hint}\n\nTextul documentului:\n{sample}"
+    known_block = ""
+    if known:
+        facts = {k: v for k, v in known.items() if v not in (None, "", [], {})}
+        if facts:
+            known_block = (
+                "\n\nCâmpuri DEJA CUNOSCUTE din registre bibliografice (CrossRef/ISBN) — "
+                "consideră-le corecte, copiază-le neschimbate în răspuns și concentrează-te "
+                "pe completarea celorlalte câmpuri:\n"
+                + json.dumps(facts, ensure_ascii=False, indent=2)
+            )
+    return f"{SYSTEM_PROMPT}{hint}{known_block}\n\nTextul documentului:\n{sample}"
 
 
 def strip_ansi(text: str) -> str:
@@ -249,12 +278,14 @@ def ai_fields_to_metadata(data: Dict) -> Dict:
         "year": str(data.get("year") or ""),
         "city": str(data.get("city") or ""),
         "edition": str(data.get("edition") or ""),
+        "publication_title": str(data.get("publication_title") or data.get("journal") or ""),
         "series": str(data.get("series") or ""),
         "series_number": str(data.get("series_number") or ""),
         "volume": str(data.get("volume") or ""),
+        "issue": str(data.get("issue") or ""),
         "num_volumes": str(data.get("num_volumes") or ""),
         "num_pages": str(data.get("num_pages") or ""),
-        "isbn": str(data.get("isbn") or ""),
+        "isbn": _norm_isbn(str(data.get("isbn") or "")),
         "issn": str(data.get("issn") or ""),
         "doi": str(data.get("doi") or ""),
         "url": str(data.get("url") or ""),
@@ -266,17 +297,27 @@ def ai_fields_to_metadata(data: Dict) -> Dict:
     }
 
 
+def _norm_isbn(raw: str) -> str:
+    """ISBN cu cratime/spații -> cifre; șir gol dacă suma de control nu trece."""
+    try:
+        from zotero.lookup import normalize_isbn
+        return normalize_isbn(raw) or ""
+    except Exception:
+        return re.sub(r"[^0-9Xx]", "", raw)
+
+
 def analyze_text(text_sample: str, cfg: Optional[AIConfig] = None,
-                 language_hint: str = "") -> Tuple[Optional[Dict], str]:
+                 language_hint: str = "", known: Optional[Dict] = None) -> Tuple[Optional[Dict], str]:
     """
     Etapa AI completă: prompt -> CLI -> JSON -> câmpuri BookMetadata.
+    `known` — câmpuri certe deja aflate (lookup); AI-ul doar completează.
     Returnează (fields_dict | None, eroare).
     """
     cfg = cfg or AIConfig()
     if not text_sample.strip():
         return None, "Nu există text de analizat (documentul nu conține text)"
 
-    prompt = build_prompt(text_sample, language_hint, cfg)
+    prompt = build_prompt(text_sample, language_hint, cfg, known=known)
     output, err = run_cli(prompt, cfg)
     if err:
         return None, err

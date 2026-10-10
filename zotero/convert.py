@@ -97,6 +97,9 @@ def to_zotero_item(m: BookMetadata) -> Dict:
     creators += [{"creatorType": "editor", **p} for p in split_people(m.editors)]
 
     pages_field = "pages" if item_type in _PAGES_FIELD_TYPES else "numPages"
+    url = m.url.strip()
+    if url.lower().startswith("file:"):
+        url = ""  # căile locale nu au ce căuta în câmpul URL al fișei
 
     field_map = {
         "title": title,
@@ -108,12 +111,13 @@ def to_zotero_item(m: BookMetadata) -> Dict:
         "series": m.series,
         "seriesNumber": m.series_number,
         "volume": m.volume,
+        "issue": m.issue,
         "numVolumes": m.num_volumes,
         pages_field: m.num_pages,
         "ISBN": m.isbn,
         "ISSN": m.issn,
         "DOI": m.doi,
-        "url": m.url,
+        "url": url,
         "accessDate": m.accessed,
         "abstractNote": m.abstract,
         "callNumber": m.call_number,
@@ -125,6 +129,43 @@ def to_zotero_item(m: BookMetadata) -> Dict:
         "citationKey": m.citation_key,
         "language": iso639_1(m.language),
     }
+
+    # Publicația-părinte are câmp dedicat în funcție de tip; „series” rămâne doar
+    # pentru colecții editoriale. Rezervă: valorile vechi stocate în `series`.
+    parent = m.publication_title.strip()
+    parent_field = {
+        "journalArticle": "publicationTitle",
+        "magazineArticle": "publicationTitle",
+        "newspaperArticle": "publicationTitle",
+        "conferencePaper": "proceedingsTitle",
+        "bookSection": "bookTitle",
+        "encyclopediaArticle": "encyclopediaTitle",
+        "dictionaryEntry": "dictionaryTitle",
+    }.get(item_type)
+    if parent_field:
+        if not parent and item_type in ("conferencePaper", "bookSection"):
+            parent, field_map["series"] = m.series, ""
+        field_map[parent_field] = parent
+
+    # Câmpuri specifice: instituția la teze/rapoarte, repository la preprint
+    if item_type == "thesis":
+        field_map["university"] = field_map.pop("publisher")
+    elif item_type == "report":
+        field_map["institution"] = field_map.pop("publisher")
+    elif item_type == "preprint":
+        field_map["repository"] = field_map.pop("publisher")
+
+    # Tipurile fără „publisher”/„place” în schema Zotero — informația se păstrează în Extra
+    if item_type in ("journalArticle", "magazineArticle", "newspaperArticle", "webpage"):
+        moved = [(lbl, field_map.pop(k, "")) for k, lbl in
+                 (("publisher", "Publisher"), ("place", "Place"), ("edition", "Edition"))]
+        field_map.pop("numVolumes", None)
+        extra_lines = [l for l in (field_map.get("extra") or "").split("\n") if l.strip()]
+        for lbl, val in moved:
+            if str(val).strip() and not any(l.lower().startswith(lbl.lower() + ":") for l in extra_lines):
+                extra_lines.append(f"{lbl}: {val}")
+        field_map["extra"] = "\n".join(extra_lines)
+
     item.update({k: v for k, v in field_map.items() if str(v).strip()})
     if creators:
         item["creators"] = creators

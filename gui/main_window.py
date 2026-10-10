@@ -329,9 +329,25 @@ class MainWindow(ctk.CTk, TkinterDnD.DnDWrapper if HAS_TKDND else object):
                     else:
                         self.after(0, lambda e=err: self.dropzone.flash_error(e))
                 elif qtype == "url":
-                    fields = {"item_type": "webpage", "title": q, "url": q,
-                              "authors": [], "confidence": 1.0}
-                    self.after(0, lambda: self._create_card_task(fields))
+                    from zotero.webpage import resolve_url
+                    fields, pdf_url, err = resolve_url(q)
+                    if not fields:
+                        self.after(0, lambda e=err: self.dropzone.flash_error(e))
+                    elif pdf_url:
+                        # Pagina are PDF: îl descărcăm și rulăm pipeline-ul complet,
+                        # cu metadatele paginii drept punct de plecare
+                        from core.paths import downloads_dir
+                        path, derr = lookup.download_pdf(pdf_url, downloads_dir(),
+                                                         preferred_name=fields.get("title", ""))
+                        if path:
+                            log.info("PDF descărcat de pe pagină | %s -> %s", q, path)
+                            self.after(0, lambda p=path, f=fields:
+                                       self._process_incoming_paths([p], seed=f))
+                        else:
+                            log.warning("PDF-ul paginii nu s-a putut descărca (%s) — fișă fără fișier", derr)
+                            self.after(0, lambda f=fields: self._create_card_task(f))
+                    else:
+                        self.after(0, lambda f=fields: self._create_card_task(f))
                 else:
                     results, err = lookup.search_crossref(q)
                     if results:
@@ -423,6 +439,7 @@ class MainWindow(ctk.CTk, TkinterDnD.DnDWrapper if HAS_TKDND else object):
     def _create_card_task(self, fields: dict, auto_queue: bool = True):
         """Creează o sarcină de tip fișă (fără fișier PDF) din metadatele căutării."""
         from worker.ai_adapter import ai_fields_to_metadata
+        from worker.merge import norm_lang
 
         task = TaskItem(
             id=str(uuid.uuid4()),
@@ -431,7 +448,7 @@ class MainWindow(ctk.CTk, TkinterDnD.DnDWrapper if HAS_TKDND else object):
             file_size_str="—",
             page_count=0,
             layer_type="—",
-            language=(fields.get("language") or "—").upper(),
+            language=norm_lang(fields.get("language")) or "—",
             pipeline_stage="Finalizat",
             # Fișele goale (manual) nu pleacă singure în Zotero — lipsesc metadatele
             zotero_status="În așteptare" if auto_queue else "—",
@@ -487,7 +504,12 @@ class MainWindow(ctk.CTk, TkinterDnD.DnDWrapper if HAS_TKDND else object):
 
         self._process_incoming_paths(paths)
 
-    def _process_incoming_paths(self, raw_paths: List[str]):
+    def _process_incoming_paths(self, raw_paths: List[str], seed: Optional[dict] = None):
+        """
+        Adaugă fișiere/foldere în coadă și pornește pipeline-ul.
+        `seed` — metadate deja cunoscute (ex. de pe pagina web de unde s-a descărcat PDF-ul).
+        """
+        from worker import merge as _merge
         try:
             import pypdf
         except ImportError:
@@ -543,7 +565,8 @@ class MainWindow(ctk.CTk, TkinterDnD.DnDWrapper if HAS_TKDND else object):
                 except Exception:
                     page_count = 0
 
-            clean_title = os.path.splitext(fname)[0].replace("_", " ")
+            # Titlu provizoriu din numele fișierului — orice sursă reală îl înlocuiește
+            clean_title = _merge.filename_title(fname)
 
             item = TaskItem(
                 id=str(uuid.uuid4()),
@@ -557,9 +580,21 @@ class MainWindow(ctk.CTk, TkinterDnD.DnDWrapper if HAS_TKDND else object):
                 zotero_status="În așteptare",
                 metadata=BookMetadata(
                     title=clean_title,
+                    language="",
                     raw_json=json.dumps({"title": clean_title, "file": fname}, ensure_ascii=False, indent=2)
                 )
             )
+            if seed:
+                # Sursa 2: metadatele paginii web — suprascriu placeholder-ul, AI completează restul
+                from worker.ai_adapter import ai_fields_to_metadata
+                from zotero.item_types import type_label
+                sf = ai_fields_to_metadata(seed)
+                if seed.get("item_type"):
+                    sf["doc_type"] = type_label(seed["item_type"])
+                extra = sf.pop("extra", "")
+                _merge.apply_source(item.metadata, sf, override=True, placeholder_title=clean_title)
+                if extra:
+                    _merge.extra_merge(item.metadata, extra)
             new_items.append(item)
 
         if new_items:
@@ -596,14 +631,21 @@ class MainWindow(ctk.CTk, TkinterDnD.DnDWrapper if HAS_TKDND else object):
                 enabled=self.db.get_setting("ai_enabled", "1") == "1",
             )
 
+            from worker import merge
+            from worker.ai_adapter import ai_fields_to_metadata
+            from zotero.lookup import lookup_text_identifiers
+            from zotero.item_types import type_label
+
             for task in tasks:
                 if task not in self.tasks:
                     continue
 
+                placeholder = merge.filename_title(task.file_name)
                 text_to_analyze = getattr(task, "extracted_text", "")
                 lang_hint = getattr(task, "language", "")
+                embedded: dict = {}
 
-                # Etapa 1: analiza stratului de text + extracție
+                # Etapa 1: analiza stratului de text + extracție (+ metadatele din fișier)
                 if not text_to_analyze:
                     self.after(0, lambda t=task: self._on_extraction_started(t))
                     try:
@@ -618,42 +660,84 @@ class MainWindow(ctk.CTk, TkinterDnD.DnDWrapper if HAS_TKDND else object):
                         continue
                     text_to_analyze = result.text
                     lang_hint = result.language
-                elif ai_cfg.enabled:
-                    self.after(0, lambda t=task: self._on_ai_started(t))
+                    embedded = result.embedded_metadata or {}
+                else:
+                    try:
+                        from worker.extractor import read_embedded_metadata
+                        embedded = read_embedded_metadata(task.file_path)
+                    except Exception:
+                        embedded = {}
+                    if ai_cfg.enabled:
+                        self.after(0, lambda t=task: self._on_ai_started(t))
 
-                # Etapa 1.5: căutarea metadatelor după DOI/ISBN
+                # Sursa 4 (încredere mică): metadatele deja încorporate în fișier — doar goluri
+                if embedded:
+                    merge.apply_source(task.metadata, embedded, override=False,
+                                       placeholder_title=placeholder)
+
+                # Sursa 1 (autoritativă): registre după DOI/ISBN din text sau din XMP
+                lookup_hit = False
                 try:
-                    from zotero.lookup import lookup_text_identifiers
-                    lf, _ = lookup_text_identifiers(text_to_analyze)
+                    probe_text = text_to_analyze
+                    for key in ("doi", "isbn"):
+                        if embedded.get(key):
+                            probe_text = f"{key.upper()}: {embedded[key]}\n" + probe_text
+                    lf, _ = lookup_text_identifiers(probe_text)
                     if lf:
-                        from worker.ai_adapter import ai_fields_to_metadata
-                        applied = 0
-                        for k, v in ai_fields_to_metadata(lf).items():
-                            if k in ("raw_json", "confidence"):
-                                continue
-                            if v is not None and str(v).strip():
-                                setattr(task.metadata, k, v)
-                                applied += 1
+                        ids_only = lf.pop("_ids_only", False)
+                        lf_meta = ai_fields_to_metadata(lf) if not ids_only else lf
+                        if not ids_only and lf.get("item_type"):
+                            lf_meta["doc_type"] = type_label(lf["item_type"])
+                        extra = lf_meta.pop("extra", "") if isinstance(lf_meta, dict) else ""
+                        applied = merge.apply_source(task.metadata, lf_meta, override=not ids_only,
+                                                     placeholder_title=placeholder)
+                        if extra:
+                            merge.extra_merge(task.metadata, extra)
+                        lookup_hit = applied > 0 and not ids_only
                         if applied:
                             self.after(0, lambda t=task: self._on_lookup_applied(t))
                 except Exception as e:
                     log.warning("Eroare la căutarea identificatorilor: %s", e)
 
-                # Etapa 2: extragerea metadatelor cu AI
-                fields, err = ({}, "") if not ai_cfg.enabled else \
-                    analyze_text(text_to_analyze, ai_cfg, language_hint=lang_hint)
-                if not fields and ai_cfg.enabled:
-                    self.after(0, lambda t=task, e=err: self._on_ai_failed(t, e))
-                    continue
+                # Sursa 3: AI completează ce lipsește (CZU, tiraj, rezumat, oraș, tip...)
+                ai_failed_msg = ""
+                if ai_cfg.enabled:
+                    known = merge.known_facts(task.metadata, placeholder)
+                    fields, err = analyze_text(text_to_analyze, ai_cfg,
+                                               language_hint=lang_hint, known=known)
+                    if fields:
+                        task.metadata.raw_json = fields.get("raw_json", task.metadata.raw_json)
+                        task.metadata.confidence = float(fields.get("confidence") or 0.5) \
+                            if not lookup_hit else max(0.9, float(fields.get("confidence") or 0.9))
+                        extra = fields.pop("extra", "")
+                        # AI suprascrie doar ce NU a venit din registre
+                        merge.apply_source(task.metadata, fields, override=not lookup_hit,
+                                           placeholder_title=placeholder,
+                                           skip=merge.known_facts(task.metadata, placeholder).keys()
+                                           if lookup_hit else ())
+                        if extra:
+                            merge.extra_merge(task.metadata, extra)
+                        self.after(0, lambda t=task: self._on_ai_applied(t))
+                    else:
+                        ai_failed_msg = err
+                        log.warning("AI indisponibil | %s | %s", task.file_name, err)
 
-                for k, v in fields.items():
-                    if k in ("raw_json", "confidence"):
-                        setattr(task.metadata, k, v)
-                        continue
-                    cur = getattr(task.metadata, k, "")
-                    if v is not None and str(v).strip() and not str(cur or "").strip():
-                        setattr(task.metadata, k, v)
-                self.after(0, lambda t=task: self._on_ai_applied(t))
+                # Rezerve finale (titlu din fișier, limbă detectată, pagini)
+                merge.finalize(task.metadata, file_name=task.file_name,
+                               detected_language=lang_hint, page_count=task.page_count,
+                               text=text_to_analyze)
+
+                # Limba din metadatele finale (registre/AI) e autoritară față de euristică
+                lang_final = merge.norm_lang(task.metadata.language)
+                if lang_final:
+                    task.language = lang_final
+
+                # Fără nicio sursă reală de metadate -> eroare explicită
+                if ai_failed_msg and not lookup_hit and not embedded.get("title"):
+                    self.after(0, lambda t=task, e=ai_failed_msg: self._on_ai_failed(t, e))
+                    continue
+                if ai_failed_msg:
+                    task.error = f"AI indisponibil ({ai_failed_msg[:80]}) — metadate din registre"
 
                 # Etapa 3: injectarea XMP + Info Dict
                 inj = inject_metadata(task.file_path, task.metadata)
@@ -691,7 +775,8 @@ class MainWindow(ctk.CTk, TkinterDnD.DnDWrapper if HAS_TKDND else object):
                 "scan": "Scan (OCR)",
                 "text": "Text",
             }.get(result.layer_type, "—")
-            task.language = result.language
+            from worker.merge import norm_lang
+            task.language = norm_lang(result.language) or "—"
             task.extracted_text = result.text
             if result.page_count:
                 task.page_count = result.page_count
@@ -932,7 +1017,7 @@ class MainWindow(ctk.CTk, TkinterDnD.DnDWrapper if HAS_TKDND else object):
                 file_size_str="2.4 MB",
                 page_count=15,
                 layer_type="Text",
-                language="ENG",
+                language="en",
                 pipeline_stage="Finalizat",
                 zotero_status="Sincronizat",
                 metadata=BookMetadata(
@@ -945,7 +1030,7 @@ class MainWindow(ctk.CTk, TkinterDnD.DnDWrapper if HAS_TKDND else object):
                     isbn="",
                     doi="10.48550/arXiv.1706.03762",
                     doc_type="Lucrare de conferință (conferencePaper)",
-                    language="ENG",
+                    language="en",
                     confidence=0.99,
                     raw_json='{\n  "title": "Attention Is All You Need",\n  "authors": ["Ashish Vaswani", "Noam Shazeer"],\n  "year": "2017",\n  "type": "conferencePaper",\n  "language": "eng"\n}'
                 )
@@ -957,7 +1042,7 @@ class MainWindow(ctk.CTk, TkinterDnD.DnDWrapper if HAS_TKDND else object):
                 file_size_str="3.8 MB",
                 page_count=28,
                 layer_type="Text",
-                language="ENG",
+                language="en",
                 pipeline_stage="Finalizat",
                 zotero_status="Zotero Offline (SQLite)",
                 metadata=BookMetadata(
@@ -970,7 +1055,7 @@ class MainWindow(ctk.CTk, TkinterDnD.DnDWrapper if HAS_TKDND else object):
                     isbn="",
                     doi="10.1109/CVPR.2016.90",
                     doc_type="Lucrare de conferință (conferencePaper)",
-                    language="ENG",
+                    language="en",
                     confidence=0.98,
                     raw_json='{\n  "title": "Deep Residual Learning for Image Recognition",\n  "authors": ["Kaiming He", "Xiangyu Zhang"],\n  "year": "2016",\n  "type": "conferencePaper",\n  "language": "eng"\n}'
                 )
@@ -982,7 +1067,7 @@ class MainWindow(ctk.CTk, TkinterDnD.DnDWrapper if HAS_TKDND else object):
                 file_size_str="48.1 MB",
                 page_count=312,
                 layer_type="Scan (OCR)",
-                language="ENG",
+                language="en",
                 pipeline_stage="Analiză AI",
                 zotero_status="În așteptare",
                 metadata=BookMetadata(
@@ -995,7 +1080,7 @@ class MainWindow(ctk.CTk, TkinterDnD.DnDWrapper if HAS_TKDND else object):
                     isbn="0-12-345678-9",
                     doi="",
                     doc_type="Carte (book)",
-                    language="ENG",
+                    language="en",
                     confidence=0.90,
                     raw_json='{\n  "title": "Historical Archive and Document Analysis",\n  "authors": ["S. A. Smith"],\n  "publisher": "Academic Press",\n  "year": "1998",\n  "isbn": "0-12-345678-9",\n  "type": "book",\n  "language": "eng"\n}'
                 )

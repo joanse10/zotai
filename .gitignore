@@ -25,10 +25,15 @@ dist_installer/
 # ==========================================
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
 logs/
 *.log
+*.xmpbak
+/*.pdf
+/*.docx
 
 # ==========================================
 # Date descărcate, Inbox & Pachete Tesseract OCR

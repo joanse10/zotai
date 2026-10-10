@@ -24,7 +24,7 @@
 
 ## Instalare
 
-Descărcați `dist_installer/ZotaiSetup-1.0.0.exe` și rulați-l (necesită drepturi de administrator). La instalare puteți activa:
+Descărcați `dist_installer/ZotaiSetup-1.1.0.exe` și rulați-l (necesită drepturi de administrator). La instalare puteți activa:
 
 - comanda rapidă pe desktop;
 - „Procesează cu Zotai" în meniul contextual pentru PDF/DOCX.
@@ -56,7 +56,7 @@ C:/Python314/python.exe -m PyInstaller zotai.spec --noconfirm
 iscc installer/zotai.iss
 ```
 
-Rezultatul: `dist_installer/ZotaiSetup-1.0.0.exe` (~48 MB, Python inclus — nu este necesar pe mașina țintă).
+Rezultatul: `dist_installer/ZotaiSetup-1.1.0.exe` (~48 MB, Python inclus — nu este necesar pe mașina țintă).
 
 ## Arhitectură & Schemă Logică (Pipeline)
 

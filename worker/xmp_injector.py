@@ -170,7 +170,7 @@ def inject_metadata(pdf_path: str, meta: BookMetadata, backup: bool = True) -> I
         doc.set_metadata({
             "title": meta.title,
             "author": meta.authors,
-            "subject": meta.doc_type,
+            "subject": (meta.abstract or "").strip()[:1000],
             "keywords": keywords,
         })
         res.fields_written.append("info_dict")

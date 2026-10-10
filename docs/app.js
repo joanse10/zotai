@@ -11,7 +11,7 @@ const translations = {
     navDownloads: "Descărcare",
     navDocs: "Ghid CLI",
     navFaq: "FAQ",
-    heroBadge: "Versiunea 1.0.0 lansată • Open Source Apache 2.0",
+    heroBadge: "Versiunea 1.1.0 lansată • Open Source Apache 2.0",
     heroTitle: "Catalogare bibliografică automată cu AI pentru Zotero",
     heroSubtitle: "Transformă orice fișier PDF sau DOCX într-o fișă bibliografică completă. Extrage text nativ sau scanează prin OCR, preia metadate din baze online și îmbogățește automat câmpurile lipsă cu AI.",
     btnDownloadWin: "Descarcă pentru Windows",
@@ -20,7 +20,7 @@ const translations = {
     sysReq: "Windows 10 / 11 (64-bit) • ~48 MB • Inno Setup",
     
     // Preview Mockup
-    mockTitle: "Zotai v1.0.0 - Catalogare Bibliografică",
+    mockTitle: "Zotai v1.1.0 - Catalogare Bibliografică",
     mockBadge: "Zotero Conectat (23119)",
     mockSearchPlaceholder: "Căutare după DOI, ISBN, titlu sau URL...",
     mockAddBtn: "+ Adaugă Fișiere",
@@ -82,7 +82,7 @@ const translations = {
     navDownloads: "Скачать",
     navDocs: "CLI Документация",
     navFaq: "FAQ",
-    heroBadge: "Релиз v1.0.0 • Open Source Apache 2.0",
+    heroBadge: "Релиз v1.1.0 • Open Source Apache 2.0",
     heroTitle: "Автоматическая каталогизация с AI для Zotero",
     heroSubtitle: "Превращает любые PDF и DOCX в готовые библиографические записи. Извлекает текст или сканирует через OCR, подтягивает точные метаданные из баз и заполняет пропуски через AI.",
     btnDownloadWin: "Скачать для Windows",
@@ -91,7 +91,7 @@ const translations = {
     sysReq: "Windows 10 / 11 (64-бит) • ~48 МБ • Inno Setup",
 
     // Preview Mockup
-    mockTitle: "Zotai v1.0.0 - Библиографический Каталогизатор",
+    mockTitle: "Zotai v1.1.0 - Библиографический Каталогизатор",
     mockBadge: "Zotero Подключён (23119)",
     mockSearchPlaceholder: "Поиск по DOI, ISBN, названию или ссылке на PDF...",
     mockAddBtn: "+ Добавить файлы",
@@ -153,7 +153,7 @@ const translations = {
     navDownloads: "Download",
     navDocs: "CLI Guide",
     navFaq: "FAQ",
-    heroBadge: "Version 1.0.0 Released • Open Source Apache 2.0",
+    heroBadge: "Version 1.1.0 Released • Open Source Apache 2.0",
     heroTitle: "Automated AI Document Cataloger for Zotero",
     heroSubtitle: "Transform any PDF or DOCX file into complete bibliographic cards. Extracts native text or runs OCR, looks up metadata online, and fills missing fields with AI CLI.",
     btnDownloadWin: "Download for Windows",
@@ -162,7 +162,7 @@ const translations = {
     sysReq: "Windows 10 / 11 (64-bit) • ~48 MB • Inno Setup",
 
     // Preview Mockup
-    mockTitle: "Zotai v1.0.0 - Bibliographic Cataloger",
+    mockTitle: "Zotai v1.1.0 - Bibliographic Cataloger",
     mockBadge: "Zotero Connected (23119)",
     mockSearchPlaceholder: "Search by DOI, ISBN, title or web PDF URL...",
     mockAddBtn: "+ Add Files",

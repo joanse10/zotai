@@ -24,55 +24,126 @@ _TIMEOUT = 20.0
 _UA = {"User-Agent": "Zotai/1.0 (mailto:zotai@local)"}
 
 _DOI_RE = re.compile(r"10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", re.I)
+# DOI „rupt” de stratul de text al PDF-ului: „10.36120/2587-3636.v 44i2” / „doi: 10.1234/\nabc”
+_DOI_LOOSE_RE = re.compile(r"10\.\d{4,9}/(?:[-._;()/:A-Za-z0-9]|[ \t\r\n](?=[-._A-Za-z0-9])){4,80}", re.I)
 
 # Capturează ISBN după cuvântul-cheie de etichetă
-_ISBN_LABEL_RE = re.compile(r"ISBN[:\s]*([0-9Xx][0-9Xx\-\s]{8,24}[0-9Xx])", re.I)
+_ISBN_LABEL_RE = re.compile(r"ISBN[-\s]*(?:1[03])?[:\s]*([0-9Xx][0-9Xx\-\s–]{8,24}[0-9Xx])", re.I)
 # Rezervă: 13 cifre începând cu 978/979
-_ISBN_BARE_RE = re.compile(r"\b97[89][\-\s0-9]{10,20}\d\b")
+_ISBN_BARE_RE = re.compile(r"\b97[89][\-\s–0-9]{10,20}\d\b")
+
+_DOI_TRAIL = ".,;:)]}>\"'"
 
 
 def _clean_isbn(raw: str) -> str:
     digits = re.sub(r"[^0-9Xx]", "", raw)
-    return digits if len(digits) in (10, 13) else ""
+    return digits.upper() if len(digits) in (10, 13) else ""
 
 
-def find_identifiers(text: str, max_chars: int = 8000) -> Dict[str, str]:
+def _isbn_valid(isbn: str) -> bool:
+    """Suma de control ISBN-10 / ISBN-13 — elimină numerele de telefon și CZU-urile."""
+    if len(isbn) == 13 and isbn.isdigit():
+        s = sum(int(c) * (1 if i % 2 == 0 else 3) for i, c in enumerate(isbn))
+        return s % 10 == 0
+    if len(isbn) == 10:
+        try:
+            s = sum((10 - i) * (10 if c == "X" else int(c)) for i, c in enumerate(isbn))
+        except ValueError:
+            return False
+        return s % 11 == 0
+    return False
+
+
+def normalize_isbn(raw: str) -> str:
+    """„978-5-86654-577-3” -> „9785866545773”; șir gol dacă nu trece suma de control."""
+    isbn = _clean_isbn(raw or "")
+    return isbn if isbn and _isbn_valid(isbn) else ""
+
+
+_DOI_GAP_RE = re.compile(r"^[ \t]{1,2}([A-Za-z0-9][-._A-Za-z0-9]{0,24})")
+
+
+def _doi_candidates(head: str) -> List[str]:
+    """
+    Toate DOI-urile din antet, în ordinea apariției. Stratul de text al PDF-ului
+    rupe adesea DOI-ul printr-un spațiu („…v 44i2”), de aceea pentru fiecare
+    potrivire strictă încercăm și varianta lipită cu următorul token de pe linie.
+    """
+    seen, out = set(), []
+
+    def _add(c: str):
+        c = c.rstrip(_DOI_TRAIL)
+        if len(c) > 8 and c.lower() not in seen:
+            seen.add(c.lower())
+            out.append(c)
+
+    for m in _DOI_RE.finditer(head):
+        strict = m.group(0)
+        gap = _DOI_GAP_RE.match(head[m.end():m.end() + 30])
+        # Lipim doar continuări plauzibile: fără sfârșit de propoziție înainte,
+        # token care începe cu cifră/minusculă (nu „Ref”, „ISBN”, „http”)
+        if gap and strict[-1] not in _DOI_TRAIL and (gap.group(1)[0].isdigit() or gap.group(1)[0].islower()) \
+                and not gap.group(1).lower().startswith(("isbn", "issn", "http", "www")):
+            _add(strict + gap.group(1))
+        _add(strict)
+    return out
+
+
+def find_identifiers(text: str, max_chars: int = 12000) -> Dict[str, str]:
     """
     Găsește DOI și ISBN în antetul documentului / titlu / blocul CIP.
     Limitează la max_chars pentru a evita extragerea referințelor din bibliografie.
+    `doi_candidates` conține toate variantele — verificate pe rând la CrossRef.
     """
     head = (text or "")[:max_chars]
     found: Dict[str, str] = {}
-    m = _DOI_RE.search(head)
-    if m:
-        found["doi"] = m.group(0).rstrip(".")
-    m = _ISBN_LABEL_RE.search(head) or _ISBN_BARE_RE.search(head)
-    if m:
-        isbn = _clean_isbn(m.group(1) if m.re is _ISBN_LABEL_RE else m.group(0))
+    cands = _doi_candidates(head)
+    if cands:
+        found["doi"] = cands[0]
+        found["doi_candidates"] = cands  # type: ignore[assignment]
+    for m in list(_ISBN_LABEL_RE.finditer(head)) + list(_ISBN_BARE_RE.finditer(head)):
+        isbn = normalize_isbn(m.group(1) if m.re is _ISBN_LABEL_RE else m.group(0))
         if isbn:
             found["isbn"] = isbn
+            break
+    m = re.search(r"(?<![EeOo]-)\bISSN[:\s]*(\d{4}[-‐–]\s?\d{3}[\dXx])", head)
+    if m:
+        found["issn"] = re.sub(r"[^0-9Xx]", "", m.group(1)).upper()
+        found["issn"] = found["issn"][:4] + "-" + found["issn"][4:]
     return found
 
 
 def lookup_text_identifiers(text: str) -> Tuple[Optional[Dict], str]:
     """
     Găsește DOI/ISBN în textul documentului și returnează metadate exacte
-    din CrossRef/OpenLibrary (similar cu „Retrieve Metadata" din Zotero).
+    din CrossRef/DataCite/OpenAlex/OpenLibrary (similar cu „Retrieve Metadata" din Zotero).
+    Încearcă toate variantele de DOI (textul PDF rupe adesea identificatorul).
     """
     ids = find_identifiers(text)
-    if ids.get("doi"):
-        fields, err = lookup_doi(ids["doi"])
+    last_err = ""
+    for doi in ids.get("doi_candidates", [])[:4]:
+        fields, err = lookup_doi(doi)
         if fields:
             fields.setdefault("extra", "")
-            log.info("Căutare după DOI %s: '%s'", ids["doi"], fields.get("title", "")[:60])
+            log.info("Căutare după DOI %s: '%s'", doi, fields.get("title", "")[:60])
+            if ids.get("isbn") and not fields.get("isbn"):
+                fields["isbn"] = ids["isbn"]
             return fields, ""
-        log.info("DOI %s găsit în text, dar CrossRef a eșuat: %s", ids["doi"], err)
+        last_err = err
+    if ids.get("doi"):
+        log.info("DOI %s găsit în text, dar niciun registru nu-l cunoaște: %s", ids["doi"], last_err)
     if ids.get("isbn"):
         fields, err = lookup_isbn(ids["isbn"])
         if fields:
             log.info("Căutare după ISBN %s: '%s'", ids["isbn"], fields.get("title", "")[:60])
+            if ids.get("doi") and not fields.get("doi"):
+                fields["doi"] = ids["doi"]
             return fields, ""
         log.info("ISBN %s găsit în text, dar căutarea a eșuat: %s", ids["isbn"], err)
+    # Identificatorii găsiți rămân utili chiar fără metadate online
+    if ids.get("doi") or ids.get("isbn") or ids.get("issn"):
+        return {"doi": ids.get("doi", ""), "isbn": ids.get("isbn", ""),
+                "issn": ids.get("issn", ""), "confidence": 0.6, "_ids_only": True}, ""
     return None, ""
 
 
@@ -111,9 +182,9 @@ def detect_query_type(query: str) -> Tuple[str, str]:
 
 def _crossref_to_fields(w: Dict) -> Dict:
     """CrossRef work -> dicționar de câmpuri BookMetadata."""
-    authors = [f"{a.get('family', '')} {a.get('given', '')}".strip()
+    authors = [f"{a.get('given', '')} {a.get('family', '')}".strip()
                for a in w.get("author", [])]
-    editors = [f"{a.get('family', '')} {a.get('given', '')}".strip()
+    editors = [f"{a.get('given', '')} {a.get('family', '')}".strip()
                for a in w.get("editor", [])]
 
     year = ""
@@ -142,6 +213,18 @@ def _crossref_to_fields(w: Dict) -> Dict:
     subtitle = (w.get("subtitle") or [""])[0]
     container = (w.get("container-title") or [""])[0]
     issns = w.get("ISSN") or []
+    event_name = (w.get("event") or {}).get("name", "")
+    is_proceedings = ctype in ("proceedings-article", "book-chapter")
+    landing_url = (w.get("resource") or {}).get("primary", {}).get("URL", "")
+
+    extra_parts = []
+    if event_name and event_name != container:
+        extra_parts.append(f"Conferință: {event_name}")
+    orcids = [f"ORCID ({a.get('family', '')}): {a['ORCID'].rsplit('/', 1)[-1]}"
+              for a in w.get("author", []) if a.get("ORCID")]
+    extra_parts.extend(orcids)
+    pdf_url = next((l.get("URL") for l in (w.get("link") or [])
+                    if "pdf" in (l.get("content-type") or "").lower()), "")
 
     return {
         "item_type": item_type,
@@ -151,22 +234,43 @@ def _crossref_to_fields(w: Dict) -> Dict:
         "editors": editors,
         "publisher": w.get("publisher", ""),
         "year": year,
-        "city": "",
+        "city": (w.get("publisher-location") or ""),
         "edition": w.get("edition-number", ""),
+        "publication_title": container,
         "series": "",
         "series_number": "",
         "volume": w.get("volume", ""),
+        "issue": w.get("issue", "") or w.get("journal-issue", {}).get("issue", ""),
         "num_volumes": "",
         "num_pages": str(w.get("page", "") or ""),
-        "isbn": (w.get("ISBN") or [""])[0],
+        "isbn": normalize_isbn((w.get("ISBN") or [""])[0]),
         "issn": issns[0] if issns else "",
         "doi": w.get("DOI", ""),
-        "url": w.get("URL", ""),
+        "url": landing_url or w.get("URL", ""),
         "language": (w.get("language") or "").upper(),
-        "abstract": re.sub(r"<[^>]+>", "", w.get("abstract", "")),
-        "extra": (f"Journal: {container}" if container else ""),
+        "abstract": re.sub(r"<[^>]+>", "", w.get("abstract", "")).strip(),
+        "extra": "\n".join(extra_parts),
+        "pdf_url": pdf_url,
         "confidence": 1.0,
     }
+
+
+def _parent_isbn(doi: str) -> str:
+    """
+    ISBN-ul culegerii (proceedings) stă pe DOI-ul părinte, nu pe articol:
+    încercăm tăierea ultimului segment (ex. „…v44i2.p280-284” -> „…v44i2”).
+    """
+    parent = doi.rsplit(".", 1)[0] if "." in doi.split("/", 1)[-1] else ""
+    if not parent or parent == doi:
+        return ""
+    try:
+        r = httpx.get(f"https://api.crossref.org/works/{parent}",
+                      headers=_UA, timeout=_TIMEOUT)
+        if r.status_code != 200:
+            return ""
+        return (r.json()["message"].get("ISBN") or [""])[0]
+    except Exception:
+        return ""
 
 
 def _openlib_to_fields(b: Dict, isbn: str) -> Dict:
@@ -273,18 +377,101 @@ def _lookup_doi_datacite(doi: str) -> Tuple[Optional[Dict], str]:
         return None, ""
 
 
+def _openalex_abstract(inv: Optional[Dict]) -> str:
+    """OpenAlex stochează rezumatul ca index inversat {cuvânt: [poziții]}."""
+    if not inv:
+        return ""
+    words = sorted(((p, w) for w, ps in inv.items() for p in ps))
+    return " ".join(w for _, w in words)
+
+
+def _openalex_to_fields(w: Dict) -> Dict:
+    """OpenAlex work -> câmpuri BookMetadata (rezumat, revistă, OA-PDF, ORCID)."""
+    loc = w.get("primary_location") or {}
+    src = loc.get("source") or {}
+    oa = w.get("open_access") or {}
+    bib = w.get("biblio") or {}
+    authors = [(a.get("author") or {}).get("display_name", "")
+               for a in w.get("authorships", [])]
+    item_type = {
+        "article": "journalArticle", "book": "book", "book-chapter": "bookSection",
+        "dissertation": "thesis", "report": "report", "preprint": "preprint",
+        "proceedings-article": "conferencePaper", "dataset": "dataset",
+    }.get((w.get("type") or "").lower(), "journalArticle")
+    pages = ""
+    if bib.get("first_page"):
+        pages = bib["first_page"] + (f"-{bib['last_page']}" if bib.get("last_page") else "")
+    return {
+        "item_type": item_type,
+        "title": w.get("title") or w.get("display_name") or "",
+        "subtitle": "", "editors": [],
+        "authors": [a for a in authors if a],
+        "publisher": src.get("host_organization_name", "") or "",
+        "year": str(w.get("publication_year") or ""),
+        "city": "", "edition": "", "series": "", "series_number": "",
+        "publication_title": src.get("display_name", "") or "",
+        "volume": bib.get("volume", "") or "",
+        "issue": bib.get("issue", "") or "",
+        "num_volumes": "", "num_pages": pages,
+        "isbn": "", "issn": (src.get("issn_l") or ""),
+        "doi": (w.get("doi") or "").replace("https://doi.org/", ""),
+        "url": loc.get("landing_page_url", "") or "",
+        "language": (w.get("language") or "").upper(),
+        "abstract": _openalex_abstract(w.get("abstract_inverted_index")),
+        "extra": "",
+        "pdf_url": oa.get("oa_url") or loc.get("pdf_url") or "",
+        "confidence": 0.95,
+    }
+
+
+def lookup_openalex(doi: str) -> Optional[Dict]:
+    """OpenAlex — indexează mai larg decât CrossRef și oferă rezumat + OA PDF."""
+    try:
+        r = httpx.get(f"https://api.openalex.org/works/https://doi.org/{doi}",
+                      params={"mailto": "zotai@local"}, headers=_UA, timeout=_TIMEOUT)
+        if r.status_code != 200:
+            return None
+        return _openalex_to_fields(r.json())
+    except Exception:
+        return None
+
+
+def merge_fields(primary: Dict, secondary: Optional[Dict]) -> Dict:
+    """Completează câmpurile goale din `primary` cu valorile din `secondary`."""
+    if not secondary:
+        return primary
+    out = dict(primary)
+    for k, v in secondary.items():
+        cur = out.get(k)
+        empty = cur is None or (isinstance(cur, (str, list)) and not cur)
+        if empty and v not in (None, "", []):
+            out[k] = v
+    return out
+
+
 def lookup_doi(doi: str) -> Tuple[Optional[Dict], str]:
-    """DOI -> metadate prin CrossRef (cu rezervă DataCite)."""
+    """
+    DOI -> metadate: CrossRef (autoritativ) + OpenAlex (rezumat, revistă, OA-PDF),
+    cu rezervă DataCite. Rezultatul este reuniunea surselor.
+    """
     try:
         r = httpx.get(f"https://api.crossref.org/works/{doi}",
                       headers=_UA, timeout=_TIMEOUT, follow_redirects=True)
         if r.status_code == 404:
             fields, _ = _lookup_doi_datacite(doi)
+            if not fields:
+                fields = lookup_openalex(doi)
             if fields:
                 return fields, ""
-            return None, f"DOI neînregistrat (CrossRef + DataCite): {doi}"
+            return None, f"DOI neînregistrat (CrossRef + DataCite + OpenAlex): {doi}"
         r.raise_for_status()
-        return _crossref_to_fields(r.json()["message"]), ""
+        fields = _crossref_to_fields(r.json()["message"])
+        fields = merge_fields(fields, lookup_openalex(doi))
+        if not fields.get("isbn") and fields.get("item_type") in ("conferencePaper", "bookSection"):
+            parent_isbn = _parent_isbn(doi)
+            if parent_isbn:
+                fields["isbn"] = parent_isbn
+        return fields, ""
     except httpx.HTTPError as e:
         return None, f"Cererea CrossRef a eșuat: {e}"
     except Exception as e:
@@ -383,25 +570,39 @@ def lookup_isbn(isbn: str) -> Tuple[Optional[Dict], str]:
         return None, f"ISBN negăsit în OpenLibrary sau Google Books: {e}"
 
 
-def download_pdf(url: str, dest_dir: str) -> Tuple[Optional[str], str]:
+def _safe_filename(name: str, limit: int = 80) -> str:
+    name = re.sub(r"[\\/:*?\"<>|\r\n]+", " ", name or "").strip(" .")
+    name = re.sub(r"\s+", " ", name)
+    return name[:limit].strip() or "document"
+
+
+def download_pdf(url: str, dest_dir: str, preferred_name: str = "") -> Tuple[Optional[str], str]:
     """
-    Descarcă PDF de la un URL direct în dest_dir.
-    Returnează (cale | None, eroare).
+    Descarcă PDF de la un URL (inclusiv bitstream-uri DSpace / linkuri fără extensie).
+    Validează după Content-Type sau semnătura %PDF. Returnează (cale | None, eroare).
     """
     try:
         os.makedirs(dest_dir, exist_ok=True)
-        fname = os.path.basename(url.split("?")[0].split("#")[0]) or "document.pdf"
-        if not fname.lower().endswith(".pdf"):
-            fname += ".pdf"
-        dest = os.path.join(dest_dir, fname)
-        with httpx.stream("GET", url, headers=_UA, timeout=60.0,
+        base = _safe_filename(preferred_name) if preferred_name else \
+            _safe_filename(os.path.basename(url.split("?")[0].split("#")[0]).rsplit(".", 1)[0])
+        dest = os.path.join(dest_dir, base + ".pdf")
+        n = 1
+        while os.path.exists(dest):
+            n += 1
+            dest = os.path.join(dest_dir, f"{base} ({n}).pdf")
+        headers = {**_UA, "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Zotai/1.0",
+                   "Accept": "application/pdf,*/*"}
+        with httpx.stream("GET", url, headers=headers, timeout=90.0,
                           follow_redirects=True) as r:
             r.raise_for_status()
-            ctype = r.headers.get("content-type", "")
-            if "pdf" not in ctype.lower() and not url.lower().endswith(".pdf"):
-                return None, f"Linkul nu indică un PDF (Content-Type: {ctype})"
+            ctype = (r.headers.get("content-type") or "").lower()
+            it = r.iter_bytes(1 << 16)
+            first = next(it, b"")
+            if not first.lstrip().startswith(b"%PDF") and "pdf" not in ctype:
+                return None, f"Linkul nu indică un PDF (Content-Type: {ctype or 'necunoscut'})"
             with open(dest, "wb") as f:
-                for chunk in r.iter_bytes(1 << 16):
+                f.write(first)
+                for chunk in it:
                     f.write(chunk)
         if os.path.getsize(dest) < 512:
             os.remove(dest)

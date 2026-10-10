@@ -60,6 +60,13 @@ ZOTERO_FROM_DB = {
 }
 
 
+def _lang_ui(raw: Optional[str]) -> str:
+    """Coduri vechi din BD (RON/ENG/rus) -> ISO 639-1 afișat în UI (ro/en/ru)."""
+    from gui.models import iso639_1
+    code = iso639_1(raw or "")
+    return code if code and code != "und" else "—"
+
+
 def _norm(mapping: dict, key: str, default: str) -> str:
     """Potrivire exactă, apoi după subșir."""
     if key in mapping:
@@ -110,7 +117,7 @@ class TaskRepository:
             file_size_str=row.get("file_size_str") or "—",
             page_count=row.get("page_count") or 0,
             layer_type=LAYER_FROM_DB.get(row["layer_type"], row["layer_type"] or "—"),
-            language=row["detected_language"] or "—",
+            language=_lang_ui(row["detected_language"]),
             pipeline_stage=STAGE_FROM_DB.get(row["stage"], row["stage"]),
             zotero_status=ZOTERO_FROM_DB.get(row["zotero_status"], row["zotero_status"]),
             metadata=meta,

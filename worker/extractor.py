@@ -39,7 +39,8 @@ _RO_STOPWORDS = {"și", "în", "este", "sunt", "pentru", "această", "acest",
 @dataclass
 class ExtractConfig:
     """Parametrii pipeline-ului de extragere."""
-    pages_to_analyze: int = 3        # numărul de pagini inițiale de analizat
+    pages_to_analyze: int = 5        # numărul de pagini inițiale de analizat (titlu, verso CIP, cuprins)
+    tail_pages: int = 2              # ultimele pagini: colofon / tiraj / ISBN la cărțile RO/RU
     scan_char_threshold: int = 120   # pragul de caractere pentru identificarea scanurilor
     ocr_languages: str = "ron+rus+eng"
     ocr_dpi: int = 300               # DPI de randare pentru OCR
@@ -68,11 +69,79 @@ class ExtractResult:
     ocr_engine: str = ""             # "tesseract" dacă s-a efectuat OCR
     text: str = ""                   # eșantion de text combinat pentru promptul AI
     pages: List[PageText] = field(default_factory=list)
+    embedded_metadata: dict = field(default_factory=dict)  # Info Dict / XMP / docProps din fișier
     ok: bool = True
     error: str = ""
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+_PLACEHOLDER_TITLES = {"untitled", "document", "microsoft word", "pdf", "scan", "doc1", "titlu"}
+
+
+def _clean_meta_value(v) -> str:
+    s = str(v or "").strip()
+    if not s or s.lower() in _PLACEHOLDER_TITLES or s.lower().startswith(("microsoft word -", "untitled")):
+        return ""
+    return s
+
+
+def read_embedded_metadata(path: str) -> dict:
+    """
+    Metadatele deja prezente în document (Info Dictionary + XMP Dublin Core la PDF,
+    docProps/core.xml la DOCX). Sursă de încredere scăzută — doar completează golurile.
+    Chei returnate: title, authors, subject(abstract), keywords, language, doi, isbn.
+    """
+    out: dict = {}
+    low = path.lower()
+    try:
+        if low.endswith(".docx"):
+            import docx
+            cp = docx.Document(path).core_properties
+            out = {"title": _clean_meta_value(cp.title), "authors": _clean_meta_value(cp.author),
+                   "abstract": _clean_meta_value(cp.subject), "keywords": _clean_meta_value(cp.keywords),
+                   "language": _clean_meta_value(cp.language)}
+        else:
+            with pymupdf.open(path) as doc:
+                info = doc.metadata or {}
+                out = {"title": _clean_meta_value(info.get("title")),
+                       "authors": _clean_meta_value(info.get("author")),
+                       "abstract": _clean_meta_value(info.get("subject")),
+                       "keywords": _clean_meta_value(info.get("keywords"))}
+                try:
+                    xmp = doc.get_xml_metadata() or ""
+                except Exception:
+                    xmp = ""
+                if xmp:
+                    import re
+                    def _x(tag):
+                        m = re.search(rf"<{tag}[^>]*>.*?<rdf:li[^>]*>(.*?)</rdf:li>", xmp, re.S)
+                        return _clean_meta_value(m.group(1)) if m else ""
+                    out.setdefault("title", "")
+                    out["title"] = out["title"] or _x("dc:title")
+                    out["abstract"] = out.get("abstract") or _x("dc:description")
+                    out["language"] = _x("dc:language")
+                    m = re.search(r"<dc:identifier>(.*?)</dc:identifier>", xmp, re.S)
+                    if m:
+                        ident = m.group(1).strip()
+                        if ident.lower().startswith("urn:isbn:"):
+                            out["isbn"] = ident[9:]
+                        elif ident.startswith("10."):
+                            out["doi"] = ident
+                    m = re.search(r"<prism:doi>(.*?)</prism:doi>", xmp, re.S)
+                    if m:
+                        out["doi"] = m.group(1).strip()
+                    m = re.search(r"<prism:isbn>(.*?)</prism:isbn>", xmp, re.S)
+                    if m:
+                        out["isbn"] = m.group(1).strip()
+    except Exception:
+        pass
+    # „Subject” folosit abuziv pentru tipul documentului (versiuni vechi Zotai) nu e rezumat
+    import re as _re
+    if out.get("abstract") and (_re.search(r"\(\w+\)$", out["abstract"]) or len(out["abstract"]) < 25):
+        out["abstract"] = ""
+    return {k: v for k, v in out.items() if v}
 
 
 def resolve_tesseract(explicit_cmd: str = "") -> Optional[str]:
@@ -183,6 +252,8 @@ def extract_document(pdf_path: str, config: Optional[ExtractConfig] = None) -> E
         result.error = f"Fișierul nu a fost găsit: {pdf_path}"
         return result
 
+    result.embedded_metadata = read_embedded_metadata(pdf_path)
+
     if pdf_path.lower().endswith(".docx"):
         return _extract_docx(pdf_path, result)
 
@@ -201,14 +272,18 @@ def extract_document(pdf_path: str, config: Optional[ExtractConfig] = None) -> E
             result.error = "PDF-ul nu conține pagini"
             return result
 
-        # Trecerea 1: stratul de text al primelor N pagini
+        # Trecerea 1: stratul de text — primele N pagini + ultimele (colofon/CIP/tiraj)
         analyze_count = min(cfg.pages_to_analyze, result.page_count)
+        head_idx = list(range(analyze_count))
+        tail_idx = [i for i in range(max(analyze_count, result.page_count - cfg.tail_pages),
+                                     result.page_count)]
+        indices = head_idx + tail_idx
         layer_pages: List[PageText] = []
-        for i in range(analyze_count):
+        for i in indices:
             text = doc[i].get_text().strip()
             layer_pages.append(PageText(page=i + 1, source="layer", char_count=len(text), text=text))
 
-        layer_chars = sum(p.char_count for p in layer_pages)
+        layer_chars = sum(p.char_count for p in layer_pages if p.page <= analyze_count)
         result.layer_type = "text" if layer_chars >= cfg.scan_char_threshold else "scan"
 
         if result.layer_type == "text":
@@ -237,8 +312,9 @@ def extract_document(pdf_path: str, config: Optional[ExtractConfig] = None) -> E
             if tessdata_dir:
                 os.environ["TESSDATA_PREFIX"] = tessdata_dir
 
-            ocr_count = result.page_count if cfg.ocr_all_pages else analyze_count
-            indices = list(range(ocr_count))
+            if cfg.ocr_all_pages:
+                indices = list(range(result.page_count))
+            # altfel: primele N + ultima pagină (tiraj/ISBN), deja calculate mai sus
             workers = max(1, min(cfg.ocr_workers, len(indices)))
 
             from worker.lang_manager import resolve_ocr_languages, installed_languages

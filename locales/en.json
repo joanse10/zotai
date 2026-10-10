@@ -167,5 +167,8 @@
   "brave_key_placeholder": "BSA... (optional)",
   "lbl_brave_hint": "For unregistered DOIs/ISBNs, Zotai can search the web for the PDF. Free key (~2000 queries/month): brave.com/search/api",
   "btn_yes": "Yes",
-  "btn_no": "No"
+  "btn_no": "No",
+  "lbl_publication_title": "Journal / Proceedings / Parent book",
+  "lbl_issue": "Issue",
+  "lbl_local_api_hint": "Deduplication: enable in Zotero → Settings → Advanced → “Allow other applications on this computer to communicate with Zotero”. Zotai will check DOI/ISBN/title before sending."
 }
